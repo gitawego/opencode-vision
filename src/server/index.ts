@@ -44,6 +44,10 @@ function syncCache(prev: VisionCache, config: VisionConfig): VisionCache {
 let cache = new VisionCache(undefined, 256);
 let currentConfig: VisionConfig = loadConfig();
 
+/** One-shot memo for auto-detect (set on success or a definitive "nothing to
+ *  detect"; transient failures reset it so a later message retries). */
+let autoDetectAttempted = false;
+
 const VisionPlugin: Plugin = async ({ client, directory }) => {
   currentConfig = loadConfig();
   cache = syncCache(cache, currentConfig);
@@ -60,6 +64,52 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
   async function listProviders() {
     const res = await client.config.providers(directory ? { query: { directory } } : {});
     return res.data?.providers ?? [];
+  }
+
+  /** One-shot auto-detect of the vision model, run at first real use.
+   *
+   *  MUST NOT run from the config hook (client RPCs there deadlock during core
+   *  init — see the comment above). By the time chat.message / describe_image
+   *  run, the client is ready. Memoizes on success or a definitive "nothing to
+   *  detect"; a transient provider-listing failure resets so the next use
+   *  retries. */
+  async function maybeAutoDetect(): Promise<void> {
+    if (autoDetectAttempted) return;
+    const cfgBase = loadConfig();
+    if (!cfgBase.autoDetectVisionModel || (cfgBase.provider && cfgBase.model)) {
+      autoDetectAttempted = true;
+      return;
+    }
+    try {
+      const providers = await listProviders();
+      const detected = autoDetectVisionModel(providers, undefined);
+      if (!detected) {
+        autoDetectAttempted = true;
+        return;
+      }
+      try {
+        saveConfig({ ...cfgBase, provider: detected.providerID, model: detected.id });
+      } catch {
+        // best-effort persist — detection still memoized so we don't re-spam
+      }
+      autoDetectAttempted = true;
+      currentConfig = loadConfig();
+      cache = syncCache(cache, currentConfig);
+      try {
+        await client.tui.showToast({
+          body: {
+            variant: "info",
+            title: "Vision",
+            message: `Auto-configured vision model ${detected.providerID}/${detected.id}. Configure in the Vision settings.`,
+          },
+        });
+      } catch {
+        // toast is best-effort
+      }
+    } catch {
+      // provider listing unavailable → describe_image will surface a
+      // not_configured error with instructions; retry on the next use.
+    }
   }
 
   /** Resolve a configured vision model to providerID/modelID, verifying it
@@ -93,6 +143,13 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
 
     config: async (cfg) => {
       // ── Register the hidden vision subagent ─────────────────────────────
+      // NOTE: this hook MUST NOT call the core client. Issuing a client RPC
+      // here (e.g. client.config.providers) during startup deadlocks opencode:
+      // the config hook runs while the core is still initializing, the response
+      // is never delivered, and the await never resolves — the app hangs before
+      // the TUI renders, with no error logged. Vision-model auto-detection is
+      // therefore deferred to first real use (maybeAutoDetect → chat.message /
+      // describe_image), when the client is guaranteed ready.
       cfg.agent ??= {};
       cfg.agent[VISION_AGENT] = {
         description:
@@ -109,39 +166,6 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
         },
         maxSteps: 2,
       } as NonNullable<NonNullable<typeof cfg>["agent"]>[string];
-
-      // ── Auto-detect a vision model when the config is unset ─────────────
-      const cfgBase = loadConfig();
-      if (cfgBase.autoDetectVisionModel && !cfgBase.provider && !cfgBase.model) {
-        try {
-          const providers = await listProviders();
-          const detected = autoDetectVisionModel(providers, undefined);
-          if (detected) {
-            (cfg.agent[VISION_AGENT] as Record<string, unknown>).model = `${detected.providerID}/${detected.id}`;
-            try {
-              saveConfig({ ...cfgBase, provider: detected.providerID, model: detected.id });
-              currentConfig = loadConfig();
-              cache = syncCache(cache, currentConfig);
-            } catch {
-              // best-effort persist
-            }
-            try {
-              await client.tui.showToast({
-                body: {
-                  variant: "info",
-                  title: "Vision",
-                  message: `Auto-configured vision model ${detected.providerID}/${detected.id}. Configure in the Vision settings.`,
-                },
-              });
-            } catch {
-              // toast is best-effort
-            }
-          }
-        } catch {
-          // provider listing unavailable at config time → describe_image will
-          // surface a not_configured error with instructions.
-        }
-      }
     },
 
     "chat.message": async (input, output) => {
@@ -149,6 +173,7 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
       if (input.model) {
         await trackModel(input.sessionID, input.model);
       }
+      await maybeAutoDetect();
       currentConfig = loadConfig();
       cache = syncCache(cache, currentConfig);
 
@@ -299,6 +324,7 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
             };
           }
 
+          await maybeAutoDetect();
           currentConfig = loadConfig();
           cache = syncCache(cache, currentConfig);
 

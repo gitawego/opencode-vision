@@ -40,7 +40,7 @@ SPEC.md               design + porting matrix + validation items
 ```bash
 npm install
 npm run typecheck   # node node_modules/typescript/bin/tsc --noEmit (Termux has no /usr/bin/env)
-npm test            # node --import tsx --test test/pure.test.ts test/delegate.test.ts
+npm test            # node --import tsx --test test/pure.test.ts test/delegate.test.ts test/server-hook.test.ts
 ```
 
 ## Notes
