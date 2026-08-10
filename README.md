@@ -46,7 +46,27 @@ Ported from the pi extension [`@gitawego/vision`](https://github.com/gitawego/vi
 ## Install
 
 > **Requires opencode ≥ 1.18** (TUI plugin support). Loads the `./server` and
-> `./tui` package entries automatically.
+> `./tui` package entries automatically. Plugins load at opencode startup —
+> **restart opencode** after installing.
+
+**From git (the pi `install git:...` equivalent):**
+
+```bash
+opencode plugin github:gitawego/opencode-vision -g   # install + write to global opencode.json
+opencode plug github:gitawego/opencode-vision        # alias; -f to force-replace a pinned version
+```
+
+or list the git spec in `opencode.json` directly (a `#tag`/`#commit` pin works):
+
+```jsonc
+{ "plugin": ["github:gitawego/opencode-vision#v0.1.0"] }
+```
+
+> The loader passes non-path specs to `@npmcli/arborist` (npm-package-arg), so
+> `github:user/repo`, `git+https://github.com/user/repo.git`, bare `user/repo`,
+> and `#committish` pins all work. This is **undocumented upstream** — the
+> officially documented methods are npm packages and local files — so treat git
+> install as experimental.
 
 **From a local checkout (dev):**
 
@@ -60,8 +80,6 @@ Ported from the pi extension [`@gitawego/vision`](https://github.com/gitawego/vi
 ```jsonc
 { "plugin": ["@gitawego/opencode-vision"] }
 ```
-
-Plugins load at opencode startup — **restart opencode** after installing.
 
 ## Configure
 
