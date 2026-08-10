@@ -1,0 +1,58 @@
+{
+  "name": "@gitawego/opencode-vision",
+  "version": "0.1.0",
+  "description": "Capability-aware vision + paste plugin for opencode. Detects image paths in messages and delegates analysis to a vision-capable model (e.g. MiniMax-M3) via an opencode subagent.",
+  "keywords": [
+    "opencode-plugin",
+    "vision",
+    "multimodal",
+    "image-analysis",
+    "capability-aware"
+  ],
+  "license": "MIT",
+  "author": "gitawego <gitawego@users.noreply.github.com>",
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./server": {
+      "types": "./src/server/index.ts",
+      "default": "./src/server/index.ts"
+    },
+    "./tui": {
+      "types": "./src/tui/index.tsx",
+      "default": "./src/tui/index.tsx"
+    }
+  },
+  "files": [
+    "src",
+    "README.md",
+    "SPEC.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/pure.test.ts test/delegate.test.ts"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.0.0"
+  },
+  "optionalDependencies": {
+    "@opentui/core": ">=0.4.5",
+    "@opentui/keymap": ">=0.4.5",
+    "@opentui/solid": ">=0.4.5"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.18.11",
+    "@opencode-ai/sdk": "^1.18.11",
+    "@opentui/core": "^0.4.5",
+    "@opentui/keymap": "^0.4.5",
+    "@opentui/solid": "^0.4.5",
+    "bun-types": "^1.1.0",
+    "tsx": "^4.23.12",
+    "typescript": "^5.6.0"
+  }
+}
