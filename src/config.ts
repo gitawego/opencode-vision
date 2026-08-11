@@ -86,6 +86,10 @@ export interface VisionConfig {
   localOnly: boolean;
   /** When true + provider+model both unset, auto-detect the vision model at startup. */
   autoDetectVisionModel: boolean;
+  /** True when provider/model were written by auto-detect (best-effort guess —
+   *  capability flags only, no auth check). Enables the delegation-time
+   *  candidate chain; cleared when the user picks a model explicitly. */
+  autoDetected: boolean;
 }
 
 export const DEFAULT_CONFIG: VisionConfig = {
@@ -113,6 +117,7 @@ export const DEFAULT_CONFIG: VisionConfig = {
   auditLogPath: undefined,
   localOnly: false,
   autoDetectVisionModel: true,
+  autoDetected: false,
 };
 
 export const CONFIG_FILENAME = "vision.json";
@@ -194,6 +199,7 @@ export function mergeConfig(partial: unknown): VisionConfig {
     auditLogPath: strOrUndef(p.auditLogPath),
     localOnly: typeof p.localOnly === "boolean" ? p.localOnly : DEFAULT_CONFIG.localOnly,
     autoDetectVisionModel: typeof p.autoDetectVisionModel === "boolean" ? p.autoDetectVisionModel : DEFAULT_CONFIG.autoDetectVisionModel,
+    autoDetected: typeof p.autoDetected === "boolean" ? p.autoDetected : DEFAULT_CONFIG.autoDetected,
   };
 }
 

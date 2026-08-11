@@ -12,7 +12,7 @@ import { tool } from "@opencode-ai/plugin";
 import { randomUUID } from "node:crypto";
 import type { FilePart, Model, Part } from "@opencode-ai/sdk";
 import { VisionCache } from "../cache";
-import { CapabilityTracker, findModel, isMultimodal, autoDetectVisionModel } from "../capability";
+import { CapabilityTracker, findModel, isMultimodal, autoDetectVisionModel, listVisionModels as collectVisionModels } from "../capability";
 import {
   loadConfig,
   MAX_BATCH_IMAGES,
@@ -22,7 +22,7 @@ import {
   visionConfigPath,
   type VisionConfig,
 } from "../config";
-import { delegateToVisionModel, type DelegateClient } from "../delegate";
+import { delegateToVisionModel, type DelegateClient, type DelegateDeps } from "../delegate";
 import { buildDescriptionsBlock, buildHintLine } from "../marker";
 import { detectImages, findImagePathTokens, rewriteWithMarkers } from "../paste";
 
@@ -61,6 +61,16 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
     },
   };
 
+  const makeDelegateDeps = (parentSessionID: string): DelegateDeps => ({
+    client: delegateClient,
+    parentSessionID,
+    resolveVisionModel,
+    listVisionModels: async (preferredProviderID) => {
+      const providers = await listProviders();
+      return collectVisionModels(providers, preferredProviderID);
+    },
+  });
+
   async function listProviders() {
     const res = await client.config.providers(directory ? { query: { directory } } : {});
     return res.data?.providers ?? [];
@@ -93,7 +103,7 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
         return;
       }
       try {
-        saveConfig({ ...cfgBase, provider: detected.providerID, model: detected.id });
+        saveConfig({ ...cfgBase, provider: detected.providerID, model: detected.id, autoDetected: true });
       } catch {
         // best-effort persist — detection still memoized so we don't re-spam
       }
@@ -252,7 +262,7 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
             const img = loaded[i]!;
             try {
               const r = await delegateToVisionModel(
-                { client: delegateClient, parentSessionID: input.sessionID, resolveVisionModel },
+                makeDelegateDeps(input.sessionID),
                 currentConfig,
                 [img],
                 currentConfig.autoDelegatePrompt,
@@ -335,7 +345,7 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
           cache = syncCache(cache, currentConfig);
 
           const result = await delegateToVisionModel(
-            { client: delegateClient, parentSessionID: context.sessionID, resolveVisionModel },
+            makeDelegateDeps(context.sessionID),
             currentConfig,
             loaded,
             args.prompt,

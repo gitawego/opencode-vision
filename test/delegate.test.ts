@@ -249,6 +249,128 @@ test("delegate: abort stops retries", async () => {
   assert.equal(promptCalls, 1);
 });
 
+// ── auto-detect candidate chain ─────────────────────────────────────────────
+
+function chainDeps(client: DelegateClient, candidates: Array<{ providerID: string; modelID: string }>, primaryUnresolvable = false): DelegateDeps {
+  return {
+    ...makeDeps(client),
+    listVisionModels: async (preferred) => {
+      const list = [...candidates];
+      if (preferred && list.some((m) => m.providerID === preferred)) {
+        list.sort((a, b) => (a.providerID === preferred ? -1 : 0) - (b.providerID === preferred ? -1 : 0));
+      }
+      return list;
+    },
+    resolveVisionModel: async (providerID, modelID) =>
+      primaryUnresolvable && providerID === CONFIG.provider && modelID === CONFIG.model
+        ? undefined
+        : { providerID, modelID },
+  };
+}
+
+const AUTO_CFG = { ...CONFIG, autoDetected: true };
+
+const CANDIDATES = [
+  { providerID: "qwen", modelID: "qwen-vl" },
+  { providerID: "openai", modelID: "gpt-4o" },
+  { providerID: "google", modelID: "gemini-pro" },
+];
+
+test("delegate: auto-detected model failing auth falls to the next candidate", async () => {
+  promptBodies = [];
+  const { client, calls } = makeClient({
+    promptError: (attempt) => (attempt === 1 ? new Error("401 unauthorized") : undefined),
+  });
+  const deps = chainDeps(capturingClient(client), CANDIDATES);
+  const cfg = { ...AUTO_CFG, retryAttempts: 0 };
+
+  const r = await delegateToVisionModel(deps, cfg, [image], "prompt", undefined);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(r.details.fallback, true);
+  assert.equal(r.details.model, "qwen/qwen-vl");
+  assert.equal(calls.prompts, 2);
+  assert.deepEqual(promptBodies.at(-1)!.model, { providerID: "qwen", modelID: "qwen-vl" });
+});
+
+test("delegate: auto-detected model unresolvable → chain from candidates", async () => {
+  promptBodies = [];
+  const { client, calls } = makeClient();
+  const deps = chainDeps(capturingClient(client), CANDIDATES, true);
+  const cfg = { ...AUTO_CFG, retryAttempts: 0 };
+
+  const r = await delegateToVisionModel(deps, cfg, [image], "prompt", undefined);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(r.details.fallback, true);
+  assert.equal(r.details.model, "qwen/qwen-vl");
+  assert.equal(calls.prompts, 1);
+});
+
+test("delegate: explicit config never auto-routes to another provider", async () => {
+  const { client, calls } = makeClient({
+    promptError: () => new Error("401 unauthorized"),
+  });
+  const deps = chainDeps(client, CANDIDATES);
+  const cfg = { ...CONFIG, retryAttempts: 0 }; // autoDetected: false (explicit)
+
+  const r = await delegateToVisionModel(deps, cfg, [image], "prompt", undefined);
+  assert.equal(r.ok, false);
+  if (!r.ok) assert.equal(r.error.code, "auth_failed");
+  assert.equal(calls.prompts, 1); // no candidate spawned
+});
+
+test("delegate: configured fallback tried before auto candidates", async () => {
+  promptBodies = [];
+  const { client, calls } = makeClient({
+    promptError: (attempt) => (attempt === 1 ? new Error("401 unauthorized") : undefined),
+  });
+  const deps = chainDeps(capturingClient(client), CANDIDATES);
+  // fallback is the 2nd auto candidate; if the chain ran before the fallback,
+  // qwen/qwen-vl (1st candidate) would win — so the winner proves ordering.
+  const cfg = { ...AUTO_CFG, retryAttempts: 0, fallbackProvider: "openai", fallbackModel: "gpt-4o" };
+
+  const r = await delegateToVisionModel(deps, cfg, [image], "prompt", undefined);
+  assert.equal(r.ok, true);
+  if (!r.ok) return;
+  assert.equal(r.details.model, "openai/gpt-4o");
+  assert.equal(calls.prompts, 2); // primary + fallback only; auto candidates not reached
+});
+
+test("delegate: chain failure reports tried models", async () => {
+  const { client, calls } = makeClient({
+    promptError: () => new Error("403 forbidden"),
+  });
+  const deps = chainDeps(client, CANDIDATES);
+  const cfg = { ...AUTO_CFG, retryAttempts: 0 };
+
+  const r = await delegateToVisionModel(deps, cfg, [image], "prompt", undefined);
+  assert.equal(r.ok, false);
+  if (!r.ok) {
+    assert.match(r.error.message, /Tried vision models: minimax\/MiniMax-M3, qwen\/qwen-vl, openai\/gpt-4o, google\/gemini-pro/);
+  }
+  assert.equal(calls.prompts, 4); // primary + 3 candidates
+});
+
+test("delegate: candidate chain is capped at MAX_AUTO_CANDIDATES", async () => {
+  const { client, calls } = makeClient({
+    promptError: () => new Error("403 forbidden"),
+  });
+  const many = [
+    { providerID: "a", modelID: "a1" },
+    { providerID: "b", modelID: "b1" },
+    { providerID: "c", modelID: "c1" },
+    { providerID: "d", modelID: "d1" },
+    { providerID: "e", modelID: "e1" },
+  ];
+  const deps = chainDeps(client, many);
+  const cfg = { ...AUTO_CFG, retryAttempts: 0 };
+
+  const r = await delegateToVisionModel(deps, cfg, [image], "prompt", undefined);
+  assert.equal(r.ok, false);
+  assert.equal(calls.prompts, 4); // primary + 3 capped candidates
+});
+
 // ── extractTextFromParts ─────────────────────────────────────────────────────
 
 test("extractTextFromParts: joins text parts, skips reasoning", () => {

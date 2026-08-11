@@ -10,7 +10,7 @@ import { findImagePathTokens, detectImages, rewriteWithMarkers } from "../src/pa
 import { renderMarkers, styleMarker, buildHintLine, buildBatchToolResult, buildDescriptionsBlock } from "../src/marker";
 import { cacheKey, VisionCache } from "../src/cache";
 import { mergeConfig, DEFAULT_CONFIG, visionConfigPath } from "../src/config";
-import { isMultimodal, findModel, findFirstVisionModel, autoDetectVisionModel } from "../src/capability";
+import { isMultimodal, findModel, findFirstVisionModel, autoDetectVisionModel, listVisionModels } from "../src/capability";
 import type { Provider } from "@opencode-ai/sdk";
 import { sha256, toDataURL } from "../src/image";
 
@@ -218,4 +218,30 @@ test("autoDetectVisionModel: falls back to any vision model when the primary pro
   assert.equal(autoDetectVisionModel(PROVIDERS, "local")?.id, "gpt-4o");
   assert.equal(autoDetectVisionModel(PROVIDERS, "does-not-exist")?.id, "gpt-4o");
   assert.equal(autoDetectVisionModel(PROVIDERS, undefined)?.id, "gpt-4o");
+});
+
+test("listVisionModels: preferred provider first, dedup, image-capable only", () => {
+  const all = listVisionModels(PROVIDERS);
+  assert.deepEqual(all, [
+    { providerID: "openai", modelID: "gpt-4o" },
+    { providerID: "openai", modelID: "gpt-4o-mini" },
+    { providerID: "minimax", modelID: "MiniMax-M3" },
+  ]);
+
+  const preferred = listVisionModels(PROVIDERS, "minimax");
+  assert.deepEqual(preferred, [
+    { providerID: "minimax", modelID: "MiniMax-M3" },
+    { providerID: "openai", modelID: "gpt-4o" },
+    { providerID: "openai", modelID: "gpt-4o-mini" },
+  ]);
+
+  const unknown = listVisionModels(PROVIDERS, "does-not-exist");
+  assert.equal(unknown.length, 3);
+  assert.equal(listVisionModels([provider("x", [["a", false]])]).length, 0);
+});
+
+test("mergeConfig: autoDetected parses booleans, defaults false", () => {
+  assert.equal(mergeConfig({}).autoDetected, false);
+  assert.equal(mergeConfig({ autoDetected: true }).autoDetected, true);
+  assert.equal(mergeConfig({ autoDetected: "yes" }).autoDetected, false);
 });

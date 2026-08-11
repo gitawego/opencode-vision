@@ -46,6 +46,9 @@ export interface DelegateDeps {
   parentSessionID: string;
   /** Resolve the configured vision model to providerID/modelID (validates it exists). */
   resolveVisionModel(providerID: string, modelID: string): Promise<{ providerID: string; modelID: string } | undefined>;
+  /** Enumerate image-capable models for the auto-detect candidate chain
+   *  (preferred provider first). Optional — absent → no chain. */
+  listVisionModels?(preferredProviderID?: string): Promise<Array<{ providerID: string; modelID: string }>>;
 }
 
 export interface DelegateSuccess {
@@ -66,6 +69,12 @@ export interface DelegateFailure {
 }
 
 export type DelegateResult = DelegateSuccess | DelegateFailure;
+
+/** Hard cap on auto-fallback candidates tried after the configured models
+ *  fail (on top of the configured fallback, which is always tried first). */
+/** Hard cap on auto-fallback candidates tried after the configured models
+ *  fail (on top of the configured fallback, which is always tried first). */
+export const MAX_AUTO_CANDIDATES = 3;
 
 export const NOT_CONFIGURED_MSG = [
   "Vision tool is not configured.",
@@ -178,8 +187,11 @@ export async function delegateToVisionModel(
     return { ok: false, error: { code: "no_image", message: "No images provided to delegate." } };
   }
 
-  const model = await deps.resolveVisionModel(config.provider, config.model);
-  if (!model) {
+  const primaryModel = await deps.resolveVisionModel(config.provider, config.model);
+  // An auto-detected model is a best-effort guess (capability flags only — no
+  // auth check), so an unresolvable primary falls through to the candidate
+  // chain below. Explicitly configured models fail loudly instead.
+  if (!primaryModel && !config.autoDetected) {
     return {
       ok: false,
       error: {
@@ -189,7 +201,9 @@ export async function delegateToVisionModel(
     };
   }
 
-  const modelId = `${model.providerID}/${model.modelID}`;
+  const modelId = primaryModel
+    ? `${primaryModel.providerID}/${primaryModel.modelID}`
+    : `${config.provider}/${config.model}`;
   const useCache = !!(cache && config.cacheEnabled);
   const keys = useCache ? images.map((img) => cacheKey(img.sourceHash, true, config.maxDimension, config.jpegQuality, prompt, modelId, config.systemPrompt)) : undefined;
 
@@ -255,42 +269,93 @@ export async function delegateToVisionModel(
     return { ok: true, text, details: { model: modelId, cached: true, fallback: false, sessionID: undefined } };
   }
 
-  // ── Network path: primary with retry, then fallback ───────────────────
+  // ── Network path: primary with retry → configured fallback → auto-detect
+  //    candidate chain (next vision-capable models from the provider list) ──
   const t0 = performance.now();
-  const primary = await callWithRetry(deps, config, model, misses, prompt, signal);
+  const primary = primaryModel
+    ? await callWithRetry(deps, config, primaryModel, misses, prompt, signal)
+    : {
+        ok: false as const,
+        error: {
+          code: "model_not_found" as const,
+          message: `Vision tool error: model "${config.provider}/${config.model}" not found or has no image input. Check the provider is configured in opencode.`,
+        },
+      };
   let latency_ms = Math.round(performance.now() - t0);
 
   let result: DelegateResult;
   if (primary.ok) {
     result = { ok: true, text: primary.text, details: { model: modelId, cached: false, fallback: false, sessionID: primary.sessionID } };
-  } else if (config.fallbackProvider && config.fallbackModel) {
-    const fbModel = await deps.resolveVisionModel(config.fallbackProvider, config.fallbackModel);
-    if (!fbModel) {
+  } else {
+    // ── Fallback chain ──────────────────────────────────────────────────
+    const tried = new Set<string>([modelId]);
+    const chain: Array<{ providerID: string; modelID: string }> = [];
+
+    if (config.fallbackProvider && config.fallbackModel) {
+      const fb = await deps.resolveVisionModel(config.fallbackProvider, config.fallbackModel);
+      if (fb) {
+        const id = `${fb.providerID}/${fb.modelID}`;
+        if (!tried.has(id)) {
+          tried.add(id);
+          chain.push(fb);
+        }
+      }
+    }
+
+    // Only auto-detected models get the candidate chain. Explicitly configured
+    // models are deliberate choices — never silently re-route their image bytes
+    // to a different provider. (localOnly never reaches the network path: misses
+    // are refused above, so no extra egress guard is needed here.)
+    if (config.autoDetected) {
+      const auto = await (deps.listVisionModels?.(config.provider) ?? Promise.resolve([]));
+      let pushed = 0;
+      for (const m of auto) {
+        if (pushed >= MAX_AUTO_CANDIDATES) break;
+        const id = `${m.providerID}/${m.modelID}`;
+        if (tried.has(id)) continue;
+        tried.add(id);
+        chain.push(m);
+        pushed += 1;
+      }
+    }
+
+    let winner: { text: string; sessionID: string | undefined; model: { providerID: string; modelID: string } } | undefined;
+    let chainErr: { code: string; message: string } | undefined;
+    for (const m of chain) {
+      if (signal?.aborted) break;
+      const attempt = await callWithRetry(deps, config, m, misses, prompt, signal);
+      if (attempt.ok) {
+        winner = { text: attempt.text, sessionID: attempt.sessionID, model: m };
+        break;
+      }
+      chainErr = attempt.error;
+      if (attempt.error.code === "aborted") break;
+    }
+
+    if (winner) {
+      const wid = `${winner.model.providerID}/${winner.model.modelID}`;
+      result = {
+        ok: true,
+        text: winner.text,
+        details: { model: wid, cached: false, fallback: true, sessionID: winner.sessionID },
+      };
+    } else {
+      const headline = chain.length > 0 && chainErr ? chainErr : primary.error;
+      const triedList = [...tried];
       result = {
         ok: false,
         error: {
-          code: "model_not_found",
-          message: `Vision tool error: fallback model "${config.fallbackProvider}/${config.fallbackModel}" not found or has no image input.`,
+          code: headline.code,
+          message: triedList.length > 1 ? `${headline.message}\nTried vision models: ${triedList.join(", ")}` : headline.message,
         },
-        details: { primaryError: primary.error.message, fallbackModel: `${config.fallbackProvider}/${config.fallbackModel}` },
+        details: {
+          primaryError: primary.error.message,
+          ...(config.fallbackProvider && config.fallbackModel
+            ? { fallbackModel: `${config.fallbackProvider}/${config.fallbackModel}` }
+            : {}),
+        },
       };
-    } else {
-      const t1 = performance.now();
-      try {
-        const fb = await spawnVisionSubagent(deps, fbModel, misses, prompt, signal);
-        latency_ms = Math.round(performance.now() - t1);
-        const fbId = `${fbModel.providerID}/${fbModel.modelID}`;
-        result = { ok: true, text: fb.text, details: { model: fbId, cached: false, fallback: true, sessionID: fb.sessionID } };
-      } catch (fbErr) {
-        result = {
-          ok: false,
-          error: { code: "vision_call_error", message: `Vision tool error (fallback ${fbModel.providerID}/${fbModel.modelID}): ${errorMessage(fbErr)}` },
-          details: { primaryError: primary.error.message, fallbackModel: `${fbModel.providerID}/${fbModel.modelID}` },
-        };
-      }
     }
-  } else {
-    result = { ok: false, error: primary.error, details: primary.details };
   }
 
   // ── Audit + cache store on success (never store a fallback result under

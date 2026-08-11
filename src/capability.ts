@@ -59,6 +59,32 @@ export function autoDetectVisionModel(
   return findFirstVisionModel(providers);
 }
 
+/** Enumerate every image-capable model across all providers, preferred
+ *  provider's models first, others after (each model once). Used as the
+ *  delegation-time candidate chain for auto-detected models. */
+export function listVisionModels(
+  providers: Provider[],
+  preferredProviderID?: string,
+): Array<{ providerID: string; modelID: string }> {
+  const out: Array<{ providerID: string; modelID: string }> = [];
+  const seen = new Set<string>();
+  const pushProvider = (p: Provider) => {
+    for (const model of Object.values(p.models ?? {})) {
+      if (!model.capabilities?.input?.image) continue;
+      const key = `${p.id}/${model.id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ providerID: p.id, modelID: model.id });
+    }
+  };
+  const preferred = preferredProviderID ? providers.find((p) => p.id === preferredProviderID) : undefined;
+  if (preferred) pushProvider(preferred);
+  for (const p of providers) {
+    if (p !== preferred) pushProvider(p);
+  }
+  return out;
+}
+
 /** Resolve the primary model object for a session via the client. */
 export async function resolveModel(
   client: CapabilityClient,

@@ -146,7 +146,7 @@ function modelPicker(api: TuiPluginApi): JSX.Element {
         const value = String(opt.value);
         const slash = value.indexOf("/");
         if (slash <= 0 || slash >= value.length - 1) return;
-        apply(api, { provider: value.slice(0, slash), model: value.slice(slash + 1) });
+        apply(api, { provider: value.slice(0, slash), model: value.slice(slash + 1), autoDetected: false });
         reopen(api);
       }}
     />
