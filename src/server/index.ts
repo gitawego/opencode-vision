@@ -72,8 +72,13 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
    *  init — see the comment above). By the time chat.message / describe_image
    *  run, the client is ready. Memoizes on success or a definitive "nothing to
    *  detect"; a transient provider-listing failure resets so the next use
-   *  retries. */
-  async function maybeAutoDetect(): Promise<void> {
+   *  retries.
+   *
+   *  `primaryProviderID` (when known) biases detection toward a vision model
+   *  on the primary model's own provider — same auth/credentials as the
+   *  session in flight. Falls back to the first vision model anywhere when
+   *  that provider has none or is unknown. */
+  async function maybeAutoDetect(primaryProviderID?: string): Promise<void> {
     if (autoDetectAttempted) return;
     const cfgBase = loadConfig();
     if (!cfgBase.autoDetectVisionModel || (cfgBase.provider && cfgBase.model)) {
@@ -82,7 +87,7 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
     }
     try {
       const providers = await listProviders();
-      const detected = autoDetectVisionModel(providers, undefined);
+      const detected = autoDetectVisionModel(providers, primaryProviderID);
       if (!detected) {
         autoDetectAttempted = true;
         return;
@@ -173,7 +178,7 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
       if (input.model) {
         await trackModel(input.sessionID, input.model);
       }
-      await maybeAutoDetect();
+      await maybeAutoDetect(input.model?.providerID);
       currentConfig = loadConfig();
       cache = syncCache(cache, currentConfig);
 
@@ -296,6 +301,8 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
             };
           }
 
+          await maybeAutoDetect(cap?.providerID);
+
           // ── Normalize paths ─────────────────────────────────────────────
           const paths = normalizeImagePaths(args);
           if (paths.length === 0) {
@@ -324,7 +331,6 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
             };
           }
 
-          await maybeAutoDetect();
           currentConfig = loadConfig();
           cache = syncCache(cache, currentConfig);
 

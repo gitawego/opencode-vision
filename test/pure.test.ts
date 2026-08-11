@@ -10,6 +10,8 @@ import { findImagePathTokens, detectImages, rewriteWithMarkers } from "../src/pa
 import { renderMarkers, styleMarker, buildHintLine, buildBatchToolResult, buildDescriptionsBlock } from "../src/marker";
 import { cacheKey, VisionCache } from "../src/cache";
 import { mergeConfig, DEFAULT_CONFIG, visionConfigPath } from "../src/config";
+import { isMultimodal, findModel, findFirstVisionModel, autoDetectVisionModel } from "../src/capability";
+import type { Provider } from "@opencode-ai/sdk";
 import { sha256, toDataURL } from "../src/image";
 
 // ── findImagePathTokens ──────────────────────────────────────────────────────
@@ -166,4 +168,54 @@ test("sha256 + toDataURL round-trip", () => {
   assert.equal(h.length, 64);
   const url = toDataURL(PNG, "image/png");
   assert.ok(url.startsWith("data:image/png;base64,"));
+});
+
+// ── capability / auto-detect ────────────────────────────────────────────────
+
+function provider(id: string, models: Array<[string, boolean]>): Provider {
+  const list: Provider["models"] = {};
+  for (const [modelID, image] of models) {
+    list[modelID] = { id: modelID, capabilities: { input: { image } } } as Provider["models"][string];
+  }
+  return { id, name: id, source: "custom", env: [], options: {}, models: list };
+}
+
+const PROVIDERS = [
+  provider("openai", [
+    ["gpt-4o", true],
+    ["gpt-4o-mini", true],
+    ["gpt-4-turbo", false],
+  ]),
+  provider("minimax", [["MiniMax-M3", true]]),
+  provider("local", [["qwen2", false]]),
+];
+
+test("isMultimodal: image input flag, safe default for unknown", () => {
+  assert.equal(isMultimodal(PROVIDERS[0]!.models["gpt-4o"]), true);
+  assert.equal(isMultimodal(PROVIDERS[0]!.models["gpt-4-turbo"]), false);
+  assert.equal(isMultimodal(undefined), false);
+  assert.equal(isMultimodal({ capabilities: undefined } as unknown as Pick<import("@opencode-ai/sdk").Model, "capabilities">), false);
+});
+
+test("findModel: exact provider+model match only", () => {
+  assert.equal(findModel(PROVIDERS, "openai", "gpt-4o")?.id, "gpt-4o");
+  assert.equal(findModel(PROVIDERS, "openai", "missing"), undefined);
+  assert.equal(findModel(PROVIDERS, "nope", "gpt-4o"), undefined);
+});
+
+test("findFirstVisionModel: first image-capable model across providers", () => {
+  const hit = findFirstVisionModel(PROVIDERS);
+  assert.equal(hit?.id, "gpt-4o");
+  assert.equal(findFirstVisionModel([provider("x", [["a", false]])]), undefined);
+});
+
+test("autoDetectVisionModel: prefers the primary provider's vision model", () => {
+  const hit = autoDetectVisionModel(PROVIDERS, "minimax");
+  assert.equal(hit?.id, "MiniMax-M3");
+});
+
+test("autoDetectVisionModel: falls back to any vision model when the primary provider has none/unknown", () => {
+  assert.equal(autoDetectVisionModel(PROVIDERS, "local")?.id, "gpt-4o");
+  assert.equal(autoDetectVisionModel(PROVIDERS, "does-not-exist")?.id, "gpt-4o");
+  assert.equal(autoDetectVisionModel(PROVIDERS, undefined)?.id, "gpt-4o");
 });
