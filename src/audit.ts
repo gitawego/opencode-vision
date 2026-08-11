@@ -1,5 +1,5 @@
 /**
- * Audit log (ported from `@gitawego/vision` lib/audit.ts). Every delegation
+ * Audit log (ported from `@gitawego/pi-vision` lib/audit.ts). Every delegation
  * (success, cache hit, fallback, failure, local-only refusal) is appended as
  * one JSONL line. Records *routing* (where bytes went), never content — image
  * bytes are only fingerprinted via `source_hash`, and the prompt is never

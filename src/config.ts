@@ -2,7 +2,7 @@
  * Vision tool configuration — load/save `vision.json` in the opencode config
  * directory (`~/.config/opencode/vision.json`).
  *
- * Mirrors the pi `@gitawego/vision` config surface so the migration is zero
+ * Mirrors the pi `@gitawego/pi-vision` config surface so the migration is zero
  * friction for users familiar with that tool. Stored in opencode's config dir
  * (not the pi agent dir) because this is an opencode plugin.
  *

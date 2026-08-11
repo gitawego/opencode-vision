@@ -13,7 +13,7 @@ the active model — and never wastes a call:
   through a hidden opencode **subagent** (the `vision` agent), not a hand-rolled
   HTTP call.
 
-Ported from the pi extension [`@gitawego/vision`](https://github.com/gitawego/vision).
+Ported from the pi extension [`@gitawego/pi-vision`](https://github.com/gitawego/pi-vision).
 
 ## Features
 
@@ -179,7 +179,7 @@ npm test            # node --import tsx --test
 ## Credits
 
 Forked design from [`getpipher/vision`](https://github.com/getpipher/vision)
-→ `@gitawego/vision` (pi) — the code, config shape and behavior originate
+→ `@gitawego/pi-vision` (pi) — the code, config shape and behavior originate
 there. This is the opencode plugin API port with subagent-based delegation.
 
 ## License

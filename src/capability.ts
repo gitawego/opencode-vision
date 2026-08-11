@@ -1,5 +1,5 @@
 /**
- * Capability detection (ported from `@gitawego/vision` lib/capability.ts).
+ * Capability detection (ported from `@gitawego/pi-vision` lib/capability.ts).
  *
  * Decides whether image analysis must be delegated. The primary model's
  * capability is read from its resolved `Model.capabilities.input.image`.

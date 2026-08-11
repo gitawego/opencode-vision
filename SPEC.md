@@ -1,7 +1,7 @@
 # opencode-vision — SPEC
 
 > Capability-aware vision + paste plugin for [opencode](https://opencode.ai).
-> A port of the pi `@gitawego/vision` extension to the opencode plugin API, with
+> A port of the pi `@gitawego/pi-vision` extension to the opencode plugin API, with
 > delegation done through an opencode **subagent** running a vision-capable model
 > (e.g. `MiniMax-M3`) instead of a hand-rolled HTTP call.
 

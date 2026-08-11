@@ -1,5 +1,5 @@
 /**
- * Content-addressed delegation cache (ported from `@gitawego/vision`
+ * Content-addressed delegation cache (ported from `@gitawego/pi-vision`
  * lib/cache.ts). Successful delegation results are cached by a key derived
  * from the original image bytes hash + prompt + model + system prompt, so a
  * second call on the same image + prompt costs zero subagent spawns.

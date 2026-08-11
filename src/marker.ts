@@ -1,6 +1,6 @@
 /**
  * Marker rendering for the paste UX — pure functions (ported from
- * `@gitawego/vision` lib/marker.ts).
+ * `@gitawego/pi-vision` lib/marker.ts).
  *
  * Rewrites image file-path tokens into `[Image-#N]` markers, and builds the
  * hint line (text-only + "hint" mode), the descriptions block (text-only +

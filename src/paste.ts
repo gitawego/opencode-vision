@@ -1,5 +1,5 @@
 /**
- * Paste/rewrite core (ported from `@gitawego/vision` extensions/paste.ts +
+ * Paste/rewrite core (ported from `@gitawego/pi-vision` extensions/paste.ts +
  * lib/marker.ts). Detects image file-path tokens in free text and rewrites
  * them into `[Image-#N]` markers.
  *

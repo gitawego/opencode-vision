@@ -7,7 +7,7 @@
  * images travel as data-URL file parts, so the vision model sees them
  * natively in that nested session.
  *
- * Resilience (ported from `@gitawego/vision` lib/delegate.ts):
+ * Resilience (ported from `@gitawego/pi-vision` lib/delegate.ts):
  * 1. Content-addressed cache (checked before any spawn; hits = 0 spawns).
  * 2. Custom system prompt (prepended to the delegation prompt).
  * 3. Retry + fallback (transient errors retried with backoff; a configured
