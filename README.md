@@ -49,6 +49,29 @@ Ported from the pi extension [`@gitawego/vision`](https://github.com/gitawego/vi
 > `./tui` package entries automatically. Plugins load at opencode startup —
 > **restart opencode** after installing.
 
+**One command installs both entries** (server + TUI settings page):
+
+```bash
+opencode plugin /path/to/opencode-vision -g
+```
+
+This is fully transparent: opencode surgically inserts the plugin into the
+`plugin` array of **both** `opencode.json` and `tui.json` (global config),
+preserving every other setting and comment, and skips files where the plugin
+is already present. The in-TUI plugin manager (`/plugins` → install) does the
+same. Re-running is a no-op.
+
+Why both files? opencode loads the two entries from different config files:
+
+- The **server** entry (image detection, `describe_image`, subagent delegation)
+  loads from the `plugin` array in `opencode.json`.
+- The **TUI** entry (the `/vision` settings page, `ctrl+shift+m` hotkeys) loads
+  from the `plugin` array in `tui.json` (global `~/.config/opencode/tui.json`,
+  or a project-local `tui.json` / `.opencode/tui.json`).
+
+If the plugin only appears in `opencode.json`, opencode starts and image
+handling works, but there is **no settings page** (`/vision` won't exist).
+
 **From git (the pi `install git:...` equivalent):**
 
 ```bash
