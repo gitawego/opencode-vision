@@ -20,7 +20,7 @@
  * The server-side hooks/tool live in the sibling package entry `./server`.
  * A single file must NOT export both server and tui.
  */
-import type { TuiDialogSelectOption, TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/tui";
+import type { TuiDialogSelectOption, TuiPlugin, TuiPluginApi } from "@opencode-ai/plugin/v1/tui";
 import { join } from "node:path";
 import type { JSX } from "solid-js";
 import {

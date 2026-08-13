@@ -98,6 +98,42 @@ or list the git spec in `opencode.json` directly (a `#tag`/`#commit` pin works):
 { "plugin": ["/path/to/opencode-vision"] }
 ```
 
+> **`npm install` is required** in the checkout before opencode loads it: the
+> plugin resolves `@opencode-ai/plugin` (the SDK that ships both the v1
+> surface, `@opencode-ai/plugin/v1`, and the v2 promise API) from its own
+> `node_modules`, so a plain clone without the install step fails to import.
+
+## opencode v2
+
+The same default export serves opencode v2 (the `{ id, server, setup }`
+module shape: v1 consumes `server`, v2's supervisor consumes the `setup`
+promise-style variant). The v2 adapter mirrors the v1 behavior:
+
+- registers `describe_image` (tool domain) and rewrites session context
+  messages (`session.hook("context")`) — markers, native media attachment for
+  multimodal primaries, hint/auto-delegate for text-only primaries;
+- delegates through the v2 session API (child session → prompt(text+files) →
+  generate → remove), with the same retry/fallback/cache pipeline;
+- auto-detects the vision model via the v2 catalog.
+
+**Install for v2** — add the path to v2's config keys:
+
+```jsonc
+// opencode.json            (core — the key is `plugins`, plural)
+{ "plugins": ["/path/to/opencode-vision"] }
+```
+
+```jsonc
+// cli.json                 (CLI config)
+{ "plugins": ["/path/to/opencode-vision"] }
+```
+
+Both keys are written when the v1 one-command installer runs on a machine
+that also has v2; `plugin` (v1) and `plugins` (v2) can coexist in
+`opencode.json`. The TUI settings panel (`/vision`, `ctrl+shift+m`) is
+v1-only — v2 has no TUI plugin entry (config lives in the shared
+`vision.json` and is honored by both adapters).
+
 **From npm (once published):**
 
 ```jsonc

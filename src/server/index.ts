@@ -7,8 +7,8 @@
  * The TUI-side settings menu lives in the sibling package entry `./tui`
  * (`src/tui/`). A single file must NOT export both server and tui.
  */
-import type { Plugin } from "@opencode-ai/plugin";
-import { tool } from "@opencode-ai/plugin";
+import type { Plugin } from "@opencode-ai/plugin/v1";
+import { tool } from "@opencode-ai/plugin/v1";
 import { randomUUID } from "node:crypto";
 import type { FilePart, Model, Part } from "@opencode-ai/sdk";
 import { VisionCache } from "../cache";
@@ -386,53 +386,4 @@ const VisionPlugin: Plugin = async ({ client, directory }) => {
 
 export default { id: "opencode-vision", server: VisionPlugin };
 
-/** Normalize image_path / image_paths (tolerating JSON-stringified arrays),
- *  dedup, cap, and resolve order (image_paths first, then image_path). */
-function normalizeImagePaths(args: { image_path?: string | string[]; image_paths?: string | string[] }): string[] {
-  const coerce = (v: string | string[] | undefined): string[] => {
-    if (v === undefined) return [];
-    if (Array.isArray(v)) return v.filter((x) => typeof x === "string");
-    if (typeof v !== "string") return [];
-    const s = v.trim();
-    if (s === "") return [];
-    if (s.startsWith("[")) {
-      try {
-        const parsed = JSON.parse(s);
-        if (Array.isArray(parsed)) return parsed.filter((x) => typeof x === "string");
-      } catch {
-        // not valid JSON → treat as a single path string
-      }
-    }
-    return [s];
-  };
-  const merged = [...coerce(args.image_paths), ...coerce(args.image_path)];
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const p of merged) {
-    const t = p.trim();
-    if (t.length === 0 || seen.has(t)) continue;
-    seen.add(t);
-    out.push(t);
-  }
-  return out;
-}
-
-/** Build the tool result text for a (possibly batched) delegation. Since the
- *  vision subagent analyzes all images in one turn, a batch yields one combined
- *  description. */
-function buildToolOutput(
-  paths: string[],
-  loaded: { abs: string; index: number }[],
-  text: string,
-  cached: boolean,
-): string {
-  if (paths.length === 1) {
-    return cached ? `(cached)\n\n${text}` : text;
-  }
-  const lines: string[] = [`[Batch: ${loaded.length} image(s)]`, ""];
-  for (const img of loaded) {
-    lines.push(`[Image ${img.index + 1}] ${img.abs}`);
-  }
-  lines.push("", text);
-  return lines.join("\n");
-}
+import { buildToolOutput, normalizeImagePaths } from "../tool-util";
