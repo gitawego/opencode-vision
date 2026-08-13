@@ -1,6 +1,6 @@
 {
   "name": "@gitawego/opencode-vision",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Capability-aware vision + paste plugin for opencode (v1 AND v2). Detects image paths in messages and delegates analysis to a vision-capable model (e.g. MiniMax-M3) via an opencode subagent.",
   "keywords": [
     "opencode-plugin",
